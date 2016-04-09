@@ -1,21 +1,46 @@
-package dynamictime
+package catalog
 
 import (
     "fmt"
-    "time"
+    "html/template"
     "net/http"
 )
 
 func init() {
-    http.HandleFunc("/", handler)
-    http.ListenAndServe(":8080", nil)
+    http.HandleFunc("/", root)
+    http.HandleFunc("/sign", sign)
+    http.ListenAndServe(":9090", nil)
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
-    fmt.Fprint(w, "Hello, world! It's me, Daniel.<br>")
-    fmt.Fprint(w, "Server Time:  ")
-    fmt.Fprintf(w, time.Now().Format(time.RFC1123))
+func root(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, guestbookForm)
 }
 
+const guestbookForm = `
+<html>
+  <body>
+    <form action="/sign" method="post">
+      <div><textarea name="content" rows="3" cols="60"></textarea></div>
+      <div><input type="submit" value="Sign Guestbook"></div>
+    </form>
+  </body>
+</html>
+`
 
+func sign(w http.ResponseWriter, r *http.Request) {
+	err := signTemplate.Execute(w, r.FormValue("content"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
 
+var signTemplate = template.Must(template.New("sign").Parse(signTemplateHTML))
+
+const signTemplateHTML = `
+<html>
+  <body>
+    <p>You wrote:</p>
+    <pre>{{.}}</pre>
+  </body>
+</html>
+`
