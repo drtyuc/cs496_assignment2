@@ -58,12 +58,13 @@ var characterTemplate = template.Must(template.New("roster").Parse(`
   </head>
   <body>
     <div><h1>Cast of Characters Database</h1></div>
-    <div>
+    <div><h2>Current Roster</h2>
     {{range .}}
       <p>LName: {{.LastName}}, FName: {{.FirstName}}, Sex: {{.Sex}}, Vegan: {{.Vegan}}, 
       Email: {{.Email}}, Phone: {{.PhoneNum}}, Date: {{.Date}}
     {{end}}
     </div>
+    <h2>Add a Character To The Roster</h2>
     <form action="/edit" method="post">
       <div><p><label>First Name: <input type="text" name="FirstName" required></label>
       <p><label>Last Name: <input type="text" name="LastName" required></label>
