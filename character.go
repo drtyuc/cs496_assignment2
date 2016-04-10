@@ -11,6 +11,7 @@ import (
 
 // Attributes of the Character entity
 type Character struct {
+	Id        int64 `datastore:"-"`
 	FirstName string
 	LastName  string
 	Sex       string
@@ -42,9 +43,14 @@ func root(w http.ResponseWriter, r *http.Request) {
 	// show up in a query.
 	q := datastore.NewQuery("Character").Ancestor(characterKey(c)).Order("-Date").Limit(10)
 	characters := make([]Character, 0, 10)
-	if _, err := q.GetAll(c, &characters); err != nil {
+	keys, err := q.GetAll(c, &characters)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	// Grab ID from NDB so we can display it
+	for i, key := range keys {
+		characters[i].Id = key.IntID()
 	}
 	if err := characterTemplate.Execute(w, characters); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -59,20 +65,46 @@ var characterTemplate = template.Must(template.New("roster").Parse(`
   <body>
     <div><h1>Cast of Characters Database</h1></div>
     <div><h2>Current Roster</h2>
-    {{range .}}
-      <p>LName: {{.LastName}}, FName: {{.FirstName}}, Sex: {{.Sex}}, Vegan: {{.Vegan}}, 
-      Email: {{.Email}}, Phone: {{.PhoneNum}}, Date: {{.Date}}
-    {{end}}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Last Name</th>
+          <th>First Name</th>
+          <th>Sex</th>
+          <th>Vegan</th>
+          <th>Email</th>
+          <th>Phone Number</th>
+          <th>Date Added</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .}}
+        <tr>
+          <td>{{.Id}}</td>
+          <td>{{.LastName}}</td>
+          <td>{{.FirstName}}</td>
+          <td>{{.Sex}}</td>
+          <td>{{.Vegan}}</td>
+          <td>{{.Email}}</td>
+          <td>{{.PhoneNum}}</td>
+          <td>{{.Date}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
     </div>
     <h2>Add a Character To The Roster</h2>
     <form action="/edit" method="post">
-      <div><p><label>First Name: <input type="text" name="FirstName" required></label>
-      <p><label>Last Name: <input type="text" name="LastName" required></label>
-      <p><label>Sex: <input type="radio" name="Sex" value="male" checked> Male 
-        <input type="radio" name="Sex" value="female"> Female</label>
-      <p><label>Vegan: <input type="checkbox" name="Vegan"> Yes</label>
-      <p><label>Email: <input type="email" name="Email" required></label>
-      <p><label>Phone number: <input type="tel" name="PhoneNum" required></label></div>
+      <div>
+        <p><label>First Name: <input type="text" name="FirstName" required></label>
+        <p><label>Last Name: <input type="text" name="LastName" required></label>
+        <p><label>Sex: <input type="radio" name="Sex" value="male" checked> Male 
+          <input type="radio" name="Sex" value="female"> Female</label>
+        <p><label>Vegan: <input type="checkbox" name="Vegan"> Yes</label>
+        <p><label>Email: <input type="email" name="Email" required></label>
+        <p><label>Phone number: <input type="tel" name="PhoneNum" required></label>
+      </div>
       <div><input type="submit" value="Save"></div>
     </form>
   </body>
@@ -81,14 +113,21 @@ var characterTemplate = template.Must(template.New("roster").Parse(`
 
 func edit(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
+
 	g := Character{
 		FirstName: r.FormValue("FirstName"),
 		LastName:  r.FormValue("LastName"),
 		Sex:       r.FormValue("Sex"),
-		Vegan:     r.FormValue("Vegan"),
 		Email:     r.FormValue("Email"),
 		PhoneNum:  r.FormValue("PhoneNum"),
 		Date:      time.Now(),
+	}
+
+	// Convert checkbox value to string
+	if v := r.FormValue("Vegan"); v == "on" {
+		g.Vegan = "Yes"
+	} else {
+		g.Vegan = "No"
 	}
 	// We set the same parent key on every Greeting entity to ensure each Greeting
 	// is in the same entity group. Queries across the single entity group
