@@ -1,5 +1,5 @@
-application: guestbook
-version: 2
+application: character
+version: 3
 runtime: go
 api_version: go1
 
