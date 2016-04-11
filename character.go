@@ -3,6 +3,7 @@ package character
 import (
 	"html/template"
 	"net/http"
+	"strconv"
 	"time"
 
 	"appengine"
@@ -26,6 +27,8 @@ func init() {
 	http.HandleFunc("/", root)
 	// View only page
 	http.HandleFunc("/edit", edit)
+
+	http.HandleFunc("/update", update)
 }
 
 // The characterKey returns the key used for all character entries.
@@ -52,19 +55,19 @@ func root(w http.ResponseWriter, r *http.Request) {
 	for i, key := range keys {
 		characters[i].Id = key.IntID()
 	}
-	if err := characterTemplate.Execute(w, characters); err != nil {
+	if err := characterEditTemplate.Execute(w, characters); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-var characterTemplate = template.Must(template.New("roster").Parse(`
+var characterEditTemplate = template.Must(template.New("roster").Parse(`
 <html>
   <head>
     <title>CS496 Assignment 2 - loughlid</title>
   </head>
   <body>
     <div><h1>Cast of Characters Database</h1></div>
-    <div><h2>Current Roster</h2>
+    <div><h2>Current Roster (edit mode)</h2>
     <table>
       <thead>
         <tr>
@@ -75,20 +78,38 @@ var characterTemplate = template.Must(template.New("roster").Parse(`
           <th>Vegan</th>
           <th>Email</th>
           <th>Phone Number</th>
-          <th>Date Added</th>
+          <th>Date</th>
+          <th></th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {{range .}}
         <tr>
-          <td>{{.Id}}</td>
-          <td>{{.LastName}}</td>
-          <td>{{.FirstName}}</td>
-          <td>{{.Sex}}</td>
-          <td>{{.Vegan}}</td>
-          <td>{{.Email}}</td>
-          <td>{{.PhoneNum}}</td>
-          <td>{{.Date}}</td>
+          <form action="/update" method="get">
+            <td><input type="number" name="Id" value="{{.Id}}" hidden required>{{.Id}}</td>
+            <td><input type="text" name="LastName" value="{{.LastName}}" required></td>
+            <td><input type="text" name="FirstName" value="{{.FirstName}}" required></td>
+            {{if eq .Sex "male"}}
+              <td><input type="radio" name="Sex" value="male" checked> Male
+                <input type="radio" name="Sex" value="female"> Female</td>
+            {{end}}
+            {{if eq .Sex "female"}}
+              <td><input type="radio" name="Sex" value="male"> Male
+                <input type="radio" name="Sex" value="female" checked> Female</td>
+            {{end}}
+            {{if eq .Vegan "Yes"}}
+              <td><input type="checkbox" name="Vegan" checked> Yes</td>
+            {{end}}
+            {{if eq .Vegan "No"}}
+              <td><input type="checkbox" name="Vegan"> Yes</td>
+            {{end}}
+            <td><input type="email" name="Email" value="{{.Email}}" required></td>
+            <td><input type="tel" name="PhoneNum" value="{{.PhoneNum}}" required></td>
+            <td><input type="text" name="Date" value="{{.Date}}" hidden>{{.Date}}</td>
+            <td><input type="submit" name="update_button" value="Update"></td>
+            <td><input type="submit" name="delete_button" value="Delete"></td>
+          </form>
         </tr>
         {{end}}
       </tbody>
@@ -138,6 +159,59 @@ func edit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func update(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	if r.FormValue("delete_button") == "Delete" {
+		Id := r.FormValue("Id")
+		s, err := strconv.ParseInt(Id, 10, 64)
+		keyId := datastore.NewKey(c, "Character", "", s, characterKey(c))
+		query := datastore.NewQuery("Character").Filter("__key__ =", keyId).Limit(10)
+		//var people []Character
+		people := make([]Character, 0, 10)
+		key, err := query.GetAll(c, &people)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		err = datastore.Delete(c, key[0])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else if r.FormValue("update_button") == "Update" {
+		Id := r.FormValue("Id")
+		s, err := strconv.ParseInt(Id, 10, 64)
+		keyId := datastore.NewKey(c, "Character", "", s, characterKey(c))
+		query := datastore.NewQuery("Character").Filter("__key__ =", keyId).Limit(10)
+		//var people []Character
+		people := make([]Character, 0, 10)
+		key, err := query.GetAll(c, &people)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		g := Character{
+			FirstName: r.FormValue("FirstName"),
+			LastName:  r.FormValue("LastName"),
+			Sex:       r.FormValue("Sex"),
+			Email:     r.FormValue("Email"),
+			PhoneNum:  r.FormValue("PhoneNum"),
+		}
+		if v := r.FormValue("Vegan"); v == "on" {
+			g.Vegan = "Yes"
+		} else {
+			g.Vegan = "No"
+		}
+		_, err = datastore.Put(c, key[0], &g)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 	http.Redirect(w, r, "/", http.StatusFound)
 }
