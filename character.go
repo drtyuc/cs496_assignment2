@@ -26,9 +26,11 @@ type Character struct {
 func init() {
 	http.HandleFunc("/", root)
 	// View only page
-	http.HandleFunc("/edit", edit)
+	http.HandleFunc("/insert", insert)
 
 	http.HandleFunc("/update", update)
+
+	http.HandleFunc("/view", view)
 }
 
 // The characterKey returns the key used for all character entries.
@@ -44,8 +46,8 @@ func root(w http.ResponseWriter, r *http.Request) {
 	// consistent. If we omitted the .Ancestor from this query there would be
 	// a slight chance that Greeting that had just been written would not
 	// show up in a query.
-	q := datastore.NewQuery("Character").Ancestor(characterKey(c)).Order("-Date").Limit(10)
-	characters := make([]Character, 0, 10)
+	q := datastore.NewQuery("Character").Ancestor(characterKey(c)).Order("-Date").Limit(100)
+	characters := make([]Character, 0, 100)
 	keys, err := q.GetAll(c, &characters)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -60,6 +62,29 @@ func root(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func view(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	// Ancestor queries, as shown here, are strongly consistent with the High
+	// Replication Datastore. Queries that span entity groups are eventually
+	// consistent. If we omitted the .Ancestor from this query there would be
+	// a slight chance that Greeting that had just been written would not
+	// show up in a query.
+	q := datastore.NewQuery("Character").Ancestor(characterKey(c)).Order("-Date").Limit(100)
+	characters := make([]Character, 0, 100)
+	keys, err := q.GetAll(c, &characters)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Grab ID from NDB so we can display it
+	for i, key := range keys {
+		characters[i].Id = key.IntID()
+	}
+	if err := characterViewTemplate.Execute(w, characters); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 var characterEditTemplate = template.Must(template.New("roster").Parse(`
 <html>
   <head>
@@ -68,6 +93,7 @@ var characterEditTemplate = template.Must(template.New("roster").Parse(`
   <body>
     <div><h1>Cast of Characters Database</h1></div>
     <div><h2>Current Roster (edit mode)</h2>
+    <p>Enter <a href="/view">view</a> only mode</p><br>
     <table>
       <thead>
         <tr>
@@ -78,7 +104,7 @@ var characterEditTemplate = template.Must(template.New("roster").Parse(`
           <th>Vegan</th>
           <th>Email</th>
           <th>Phone Number</th>
-          <th>Date</th>
+          <th>Date Created</th>
           <th></th>
           <th></th>
         </tr>
@@ -86,7 +112,7 @@ var characterEditTemplate = template.Must(template.New("roster").Parse(`
       <tbody>
         {{range .}}
         <tr>
-          <form action="/update" method="get">
+          <form action="/update" method="post">
             <td><input type="number" name="Id" value="{{.Id}}" hidden required>{{.Id}}</td>
             <td><input type="text" name="LastName" value="{{.LastName}}" required></td>
             <td><input type="text" name="FirstName" value="{{.FirstName}}" required></td>
@@ -116,7 +142,7 @@ var characterEditTemplate = template.Must(template.New("roster").Parse(`
     </table>
     </div>
     <h2>Add a Character To The Roster</h2>
-    <form action="/edit" method="post">
+    <form action="/insert" method="post">
       <div>
         <p><label>First Name: <input type="text" name="FirstName" required></label>
         <p><label>Last Name: <input type="text" name="LastName" required></label>
@@ -132,7 +158,49 @@ var characterEditTemplate = template.Must(template.New("roster").Parse(`
 </html>
 `))
 
-func edit(w http.ResponseWriter, r *http.Request) {
+var characterViewTemplate = template.Must(template.New("roster").Parse(`
+<html>
+  <head>
+    <title>CS496 Assignment 2 - loughlid</title>
+  </head>
+  <body>
+    <div><h1>Cast of Characters Database</h1></div>
+    <div><h2>Current Roster (view only mode)</h2>
+    <p>Enter <a href="/">edit</a> mode</p><br>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Last Name</th>
+          <th>First Name</th>
+          <th>Sex</th>
+          <th>Vegan</th>
+          <th>Email</th>
+          <th>Phone Number</th>
+          <th>Date Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .}}
+        <tr>
+          <td>{{.Id}}</td>
+          <td>{{.LastName}}</td>
+          <td>{{.FirstName}}</td>
+          <td>{{.Sex}}</td>
+          <td>{{.Vegan}}</td>
+          <td>{{.Email}}</td>
+          <td>{{.PhoneNum}}</td>
+          <td>{{.Date}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    </div>
+  </body>
+</html>
+`))
+
+func insert(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 
 	g := Character{
@@ -201,6 +269,7 @@ func update(w http.ResponseWriter, r *http.Request) {
 			Sex:       r.FormValue("Sex"),
 			Email:     r.FormValue("Email"),
 			PhoneNum:  r.FormValue("PhoneNum"),
+			Date:      people[0].Date,
 		}
 		if v := r.FormValue("Vegan"); v == "on" {
 			g.Vegan = "Yes"
